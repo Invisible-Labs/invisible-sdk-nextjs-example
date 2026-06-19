@@ -87,6 +87,8 @@ Build output directory: out
 Node version: 24
 ```
 
+The repository also includes `wrangler.toml` with `pages_build_output_dir = "out"` so Cloudflare Pages can read the static output directory from source control.
+
 Environment variables:
 
 ```txt
