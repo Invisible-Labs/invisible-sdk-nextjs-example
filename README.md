@@ -14,6 +14,7 @@ Status: preview. Do not use with production funds.
 - Honest handling for SDK surfaces that still report preview or not-implemented behavior.
 
 The UI intentionally hides DKG progress, coordinator state timelines, and internal recovery events.
+Invisible also uses this SDK in its own frontend. Visit [app.invisible.exchange](https://app.invisible.exchange) for the complete, more advanced product UI.
 
 Minimums shown by the example:
 

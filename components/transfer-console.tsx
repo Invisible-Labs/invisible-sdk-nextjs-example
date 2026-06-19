@@ -81,7 +81,7 @@ export function TransferConsole({ env }: TransferConsoleProps) {
 
   return (
     <main className="min-h-screen bg-background text-foreground">
-      <section className="mx-auto flex min-h-screen w-full max-w-2xl flex-col justify-center px-5 py-10">
+      <section className="mx-auto flex min-h-screen w-full max-w-2xl flex-col px-5 py-16 sm:py-24">
         <header className="mb-10 flex items-center justify-between gap-4 text-xs font-medium uppercase text-muted">
           <span>Invisible SDK</span>
           <span className={configured ? "text-success" : "text-warning"}>
@@ -90,7 +90,7 @@ export function TransferConsole({ env }: TransferConsoleProps) {
         </header>
 
         <div className="space-y-8">
-          <div className="inline-flex border border-border p-1">
+          <div className="inline-flex border border-border p-1" data-tabs>
             <ModeButton active={mode === "transfer"} onClick={() => selectMode("transfer")}>
               Private transfer
             </ModeButton>
@@ -178,6 +178,19 @@ export function TransferConsole({ env }: TransferConsoleProps) {
           )}
 
           {outcome ? <OutcomePanel outcome={outcome} /> : null}
+
+          <p className="border-t border-border pt-5 text-sm leading-6 text-muted">
+            Invisible uses this SDK in its own frontend too. For the complete product UI, visit{" "}
+            <a
+              className="text-foreground underline underline-offset-4 hover:text-accent-strong"
+              href="https://app.invisible.exchange"
+              rel="noreferrer"
+              target="_blank"
+            >
+              app.invisible.exchange
+            </a>
+            .
+          </p>
         </div>
       </section>
     </main>
