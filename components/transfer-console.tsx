@@ -1,7 +1,5 @@
 "use client";
 
-import { useConnectWallet, useLogin, useLogout, usePrivy } from "@privy-io/react-auth";
-import { useWallets as useSolanaWallets } from "@privy-io/react-auth/solana";
 import {
   Activity,
   AlertTriangle,
@@ -11,13 +9,12 @@ import {
   LockKeyhole,
   Send,
   ShieldCheck,
-  Wallet,
 } from "lucide-react";
 import { type FormEvent, type ReactNode, useMemo, useState } from "react";
 
 import type { PublicEnv } from "@/lib/env";
 import { isReady } from "@/lib/env";
-import { lamportsToSol, shortAddress } from "@/lib/format";
+import { lamportsToSol } from "@/lib/format";
 import {
   buildSingleDestinationPayoutPolicy,
   startPrivateTransfer,
@@ -32,20 +29,14 @@ type TransferConsoleProps = {
 const sampleDestination = "11111111111111111111111111111111";
 
 export function TransferConsole({ env }: TransferConsoleProps) {
-  const { ready, authenticated } = usePrivy();
-  const { login } = useLogin();
-  const { logout } = useLogout();
-  const { connectWallet } = useConnectWallet();
-  const { ready: walletsReady, wallets } = useSolanaWallets();
   const [amountSol, setAmountSol] = useState("0.1");
   const [destinationAddress, setDestinationAddress] = useState(sampleDestination);
   const [events, setEvents] = useState<TransferEvent[]>([]);
   const [outcome, setOutcome] = useState<TransferOutcome | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const primaryWallet = wallets[0] ?? null;
   const configured = isReady(env);
-
+  const coordinatorHost = new URL(env.coordinatorWsUrl).hostname;
   const policyPreview = useMemo(
     () => buildSingleDestinationPayoutPolicy(destinationAddress),
     [destinationAddress],
@@ -54,7 +45,7 @@ export function TransferConsole({ env }: TransferConsoleProps) {
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!env.coordinator || submitting) {
+    if (!configured || submitting) {
       return;
     }
 
@@ -76,7 +67,7 @@ export function TransferConsole({ env }: TransferConsoleProps) {
   return (
     <main className="min-h-screen bg-background text-foreground">
       <section className="mx-auto grid min-h-screen w-full max-w-7xl gap-6 px-5 py-5 lg:grid-cols-[360px_1fr]">
-        <aside className="flex flex-col justify-between border border-zinc-800 bg-zinc-950 p-5">
+        <aside className="border border-zinc-800 bg-zinc-950 p-5">
           <div className="space-y-8">
             <div className="space-y-3">
               <div className="flex h-12 w-12 items-center justify-center border border-sky-300/40 bg-sky-300/10 text-sky-200">
@@ -89,23 +80,17 @@ export function TransferConsole({ env }: TransferConsoleProps) {
                 </h1>
               </div>
               <p className="text-sm leading-6 text-zinc-400">
-                Devnet preview for a Next.js app that connects a Solana wallet through Privy and
-                starts a user transfer through the installed SDK package.
+                Next.js frontend example that starts a user transfer through the installed SDK
+                package. No app-specific auth provider is required.
               </p>
             </div>
 
             <div className="space-y-3 text-sm">
               <StatusRow
-                icon={<Wallet aria-hidden="true" size={16} />}
-                label="Privy"
-                value={ready ? (authenticated ? "authenticated" : "ready") : "loading"}
-                ok={ready}
-              />
-              <StatusRow
                 icon={<Activity aria-hidden="true" size={16} />}
-                label="Solana"
-                value={walletsReady ? `${wallets.length} wallet(s)` : "detecting"}
-                ok={walletsReady}
+                label="Network"
+                value={env.solanaCluster}
+                ok
               />
               <StatusRow
                 icon={<LockKeyhole aria-hidden="true" size={16} />}
@@ -113,47 +98,30 @@ export function TransferConsole({ env }: TransferConsoleProps) {
                 value={configured ? env.invisibleRequiredMode : env.missing.join(", ")}
                 ok={configured}
               />
+              <StatusRow
+                icon={<ShieldCheck aria-hidden="true" size={16} />}
+                label="TEE"
+                value={coordinatorHost}
+                ok={configured}
+              />
             </div>
-          </div>
-
-          <div className="mt-8 space-y-3">
-            {authenticated ? (
-              <button className="button-secondary w-full" type="button" onClick={() => logout()}>
-                Disconnect
-              </button>
-            ) : (
-              <button className="button-primary w-full" type="button" onClick={login}>
-                Log in with Privy
-              </button>
-            )}
           </div>
         </aside>
 
         <section className="grid gap-6 lg:grid-rows-[auto_1fr]">
           <div className="grid gap-4 md:grid-cols-3">
             <Metric label="Cluster" value={env.solanaCluster} />
-            <Metric label="Wallet" value={primaryWallet ? shortAddress(primaryWallet.address) : "none"} />
+            <Metric label="Coordinator" value={coordinatorHost} />
             <Metric label="Amount" value={`${amountSol || "0"} SOL`} />
           </div>
 
           <div className="grid gap-6 xl:grid-cols-[1fr_380px]">
             <form className="border border-zinc-800 bg-zinc-950 p-5" onSubmit={onSubmit}>
-              <div className="flex flex-col gap-3 border-b border-zinc-800 pb-5 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <h2 className="text-xl font-semibold text-white">Start transfer</h2>
-                  <p className="mt-1 text-sm text-zinc-400">
-                    One fresh destination, 100% payout share, instant mode.
-                  </p>
-                </div>
-                <button
-                  className="button-secondary"
-                  type="button"
-                  onClick={() => connectWallet({ walletChainType: "solana-only" })}
-                  disabled={!ready}
-                >
-                  <Wallet aria-hidden="true" size={16} />
-                  Connect wallet
-                </button>
+              <div className="border-b border-zinc-800 pb-5">
+                <h2 className="text-xl font-semibold text-white">Start transfer</h2>
+                <p className="mt-1 text-sm text-zinc-400">
+                  One fresh destination, 100% payout share, instant mode.
+                </p>
               </div>
 
               <div className="mt-5 grid gap-5">
@@ -201,11 +169,7 @@ export function TransferConsole({ env }: TransferConsoleProps) {
                   </Notice>
                 ) : null}
 
-                <button
-                  className="button-primary h-12"
-                  type="submit"
-                  disabled={!authenticated || !primaryWallet || !configured || submitting}
-                >
+                <button className="button-primary h-12" type="submit" disabled={!configured || submitting}>
                   {submitting ? (
                     <Loader2 className="animate-spin" aria-hidden="true" size={17} />
                   ) : (

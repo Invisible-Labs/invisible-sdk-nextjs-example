@@ -4,7 +4,7 @@ Rules:
 
 - Do not commit secrets, `.env.local`, private keys, Recovery Codes, FROST shares, nonces, raw transaction bytes, signatures, or decrypted payloads.
 - Use `@invisible-labs/sdk` as the currently published SDK package. Do not fake successful coordinator execution.
-- Prefer Privy Solana Standard Wallet connectors before adding legacy wallet adapters.
+- Keep this example free of app-id gated auth providers unless a feature requires them.
 - Keep the first screen as the usable transfer console, not a marketing page.
 - Run `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build`, and `npm run audit:high` before opening a PR.
 

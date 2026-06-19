@@ -13,8 +13,8 @@ Do not open public issues containing:
 - pre-broadcast signatures
 - decrypted coordinator payloads
 
-This example is devnet preview software. Do not use it with production funds.
+This example is preview software. Do not use it with production funds.
 
 ## Dependency Posture
 
-CI runs `npm run audit:high`. Moderate advisories from upstream Privy and Next transitive dependencies are tracked in the README and should be revisited when those packages publish fixes.
+CI runs `npm run audit:high`. Moderate advisories from upstream dependencies are tracked in the README and should be revisited when those packages publish fixes.

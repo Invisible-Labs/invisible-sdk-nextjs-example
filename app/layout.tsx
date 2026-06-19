@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Invisible SDK Privy Example",
-  description: "Open-source Next.js and Privy example for the Invisible SDK.",
+  title: "Invisible SDK Next.js Example",
+  description: "Open-source Next.js example for the Invisible SDK.",
 };
 
 export default function RootLayout({
