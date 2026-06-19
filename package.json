@@ -7,12 +7,12 @@
   },
   "scripts": {
     "dev": "next dev --webpack",
-    "build": "next build --webpack",
+    "build": "next build --webpack && node scripts/mirror-static-export.mjs",
     "start": "node scripts/serve-static.mjs out 3000",
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
-    "check:static": "test -f out/index.html",
+    "check:static": "test -f out/index.html && test -f .vercel/output/static/index.html",
     "audit:high": "npm audit --audit-level=high"
   },
   "dependencies": {

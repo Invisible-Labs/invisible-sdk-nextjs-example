@@ -81,13 +81,13 @@ Use Cloudflare Pages for a zero-cost public preview.
 Suggested settings:
 
 ```txt
-Framework preset: None
+Framework preset: Next.js (Static HTML Export)
 Build command: npm run build
 Build output directory: out
 Node version: 24
 ```
 
-The repository also includes `wrangler.toml` with `pages_build_output_dir = "out"` so Cloudflare Pages can read the static output directory from source control.
+If the Pages project was created with the generic Next.js preset, the preview may 404 because Cloudflare can look for `.vercel/output/static`. The build mirrors `out/` there as a compatibility fallback, but the preferred fix is still to use the `Next.js (Static HTML Export)` preset or set the output directory to `out`.
 
 Environment variables:
 
