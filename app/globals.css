@@ -1,18 +1,18 @@
 @import "tailwindcss";
 
 :root {
-  --background: #05070a;
-  --foreground: #f4f7fb;
-  --surface: #090d12;
-  --surface-raised: #101720;
-  --border: #27313d;
-  --muted: #9aa8b7;
-  --accent: #38bdf8;
-  --accent-strong: #14b8a6;
+  --background: #0a0a0c;
+  --foreground: #f4f4f6;
+  --surface: #101014;
+  --surface-raised: #16161b;
+  --border: rgb(255 255 255 / 0.1);
+  --muted: #a4a4ac;
+  --accent: #8b5cf6;
+  --accent-strong: #46d6a0;
   --danger: #f87171;
   --warning: #fbbf24;
-  --success: #34d399;
-  --radius-control: 6px;
+  --success: #46d6a0;
+  --radius-control: 0;
 }
 
 @theme inline {
@@ -62,34 +62,31 @@ button:disabled {
   transition:
     background-color 160ms ease,
     border-color 160ms ease,
-    color 160ms ease,
-    transform 160ms ease;
+    color 160ms ease;
 }
 
 .button-primary {
-  background: var(--accent);
-  color: #041014;
+  background: var(--foreground);
+  color: var(--background);
 }
 
 .button-primary:hover:not(:disabled) {
-  background: #7dd3fc;
-  transform: translateY(-1px);
+  background: var(--accent-strong);
 }
 
 .button-secondary {
-  background: #0f1720;
+  background: var(--surface);
   border: 1px solid var(--border);
   color: var(--foreground);
 }
 
 .button-secondary:hover:not(:disabled) {
-  border-color: var(--accent);
-  color: #e0f7ff;
-  transform: translateY(-1px);
+  border-color: rgb(255 255 255 / 0.24);
+  color: var(--foreground);
 }
 
 .input {
-  background: #05080c;
+  background: var(--background);
   border: 1px solid var(--border);
   border-radius: var(--radius-control);
   color: var(--foreground);
@@ -101,5 +98,5 @@ button:disabled {
 
 .input:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgb(56 189 248 / 0.14);
+  box-shadow: 0 0 0 3px rgb(139 92 246 / 0.16);
 }

@@ -7,10 +7,21 @@ Status: preview. Do not use with production funds.
 
 ## What This Shows
 
-- A client-side private-transfer console with no app-id gated auth provider.
+- A minimal client-side private-transfer flow.
+- A minimal LP onboarding view.
 - Public Invisible coordinator configuration for the Azure TEE endpoint.
-- A normal-user private-transfer flow through the installed SDK package.
+- Normal-user private transfer through the installed SDK package.
 - Honest handling for SDK surfaces that still report preview or not-implemented behavior.
+
+The UI intentionally hides DKG progress, coordinator state timelines, and internal recovery events.
+
+Minimums shown by the example:
+
+```txt
+Private transfer: 0.4 SOL
+LP initial funding: 0.101 SOL to LP_DKG_0
+LP default shards: 200
+```
 
 ## Current SDK Package
 

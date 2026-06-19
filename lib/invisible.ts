@@ -14,6 +14,10 @@ import {
 
 import { solToLamports } from "@/lib/format";
 
+export const MIN_PRIVATE_TRANSFER_LAMPORTS = 400_000_000;
+export const MIN_LP_INITIAL_FUNDING_LAMPORTS = 101_000_000;
+export const LP_DEFAULT_TARGET_SHARDS = 200;
+
 export type TransferEvent =
   | { kind: "state"; message: string }
   | { kind: "deposit"; swapId: string; depositPublicKeyHex: string; amountLamports: number }
@@ -72,29 +76,36 @@ export function toPreviewOrFailure(error: unknown): TransferOutcome {
 }
 
 export async function startPrivateTransfer(input: StartPrivateTransferInput): Promise<TransferOutcome> {
-  const amountLamports = solToLamports(input.amountSol);
-  const payoutSpec = buildInstantPayoutSpec(input.destinationAddress);
-  const makeUserSession = input.createUserSession ?? createCoordinatorSession;
-  const user = makeUserSession({
-    coordinator: input.coordinator,
-    createSession: input.createSession,
-  });
-
-  user.onStateChange((swapState, sessionStatus) => {
-    input.onEvent?.({
-      kind: "state",
-      message: `Coordinator session ${sessionStatus}; swap state ${swapState}.`,
-    });
-  });
-
-  user.onCoordinatorError((error) => {
-    input.onEvent?.({
-      kind: "state",
-      message: normalizeError(error, "Coordinator returned an error."),
-    });
-  });
+  let user: CoordinatorSessionHandle | undefined;
 
   try {
+    const amountLamports = solToLamports(input.amountSol);
+
+    if (amountLamports < MIN_PRIVATE_TRANSFER_LAMPORTS) {
+      throw new Error("Minimum private transfer amount is 0.4 SOL.");
+    }
+
+    const payoutSpec = buildInstantPayoutSpec(input.destinationAddress);
+    const makeUserSession = input.createUserSession ?? createCoordinatorSession;
+    user = makeUserSession({
+      coordinator: input.coordinator,
+      createSession: input.createSession,
+    });
+
+    user.onStateChange((swapState, sessionStatus) => {
+      input.onEvent?.({
+        kind: "state",
+        message: `Coordinator session ${sessionStatus}; swap state ${swapState}.`,
+      });
+    });
+
+    user.onCoordinatorError((error) => {
+      input.onEvent?.({
+        kind: "state",
+        message: normalizeError(error, "Coordinator returned an error."),
+      });
+    });
+
     const result = await user.runSwap({
       amountLamports,
       payoutSpec,
@@ -128,6 +139,6 @@ export async function startPrivateTransfer(input: StartPrivateTransferInput): Pr
   } catch (error) {
     return toPreviewOrFailure(error);
   } finally {
-    user.close();
+    user?.close();
   }
 }

@@ -5,6 +5,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   buildInstantPayoutSpec,
   buildSingleDestinationPayoutPolicy,
+  MIN_LP_INITIAL_FUNDING_LAMPORTS,
+  MIN_PRIVATE_TRANSFER_LAMPORTS,
   startPrivateTransfer,
   toPreviewOrFailure,
 } from "@/lib/invisible";
@@ -56,6 +58,11 @@ describe("payout helpers", () => {
 });
 
 describe("startPrivateTransfer", () => {
+  it("keeps the documented minimums in code", () => {
+    expect(MIN_PRIVATE_TRANSFER_LAMPORTS).toBe(400_000_000);
+    expect(MIN_LP_INITIAL_FUNDING_LAMPORTS).toBe(101_000_000);
+  });
+
   it("calls the installed SDK coordinator session with observable callbacks", async () => {
     const events: string[] = [];
     const result: SwapResult = {
@@ -81,7 +88,7 @@ describe("startPrivateTransfer", () => {
 
     await expect(
       startPrivateTransfer({
-        amountSol: "0.1",
+        amountSol: "0.4",
         destinationAddress: "dest",
         coordinator,
         createUserSession,
@@ -91,6 +98,26 @@ describe("startPrivateTransfer", () => {
 
     expect(createUserSession).toHaveBeenCalledWith({ coordinator, createSession: undefined });
     expect(events).toContain("deposit");
+  });
+
+  it("rejects private transfer amounts below the protocol minimum", async () => {
+    const createUserSession = vi.fn(() => fakeHandle(async () => {
+      throw new Error("should not run");
+    }));
+
+    await expect(
+      startPrivateTransfer({
+        amountSol: "0.399999999",
+        destinationAddress: "dest",
+        coordinator,
+        createUserSession,
+      }),
+    ).resolves.toMatchObject({
+      kind: "failed",
+      message: "Minimum private transfer amount is 0.4 SOL.",
+    });
+
+    expect(createUserSession).not.toHaveBeenCalled();
   });
 
   it("maps SDK NotImplementedError to a preview-only outcome", async () => {
