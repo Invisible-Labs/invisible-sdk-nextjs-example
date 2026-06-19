@@ -87,7 +87,7 @@ Build output directory: out
 Node version: 24
 ```
 
-This repository also includes `wrangler.jsonc` with `pages_build_output_dir` set to `./out`, matching the Next.js static export. The build mirrors `out/` to `.vercel/output/static` and `dist/` as compatibility fallbacks for projects created with another preset. If a Cloudflare Pages deployment is green but the URL returns 404, first verify that the build command is `npm run build` and the output directory is `out`.
+The build mirrors `out/` to `.vercel/output/static` and `dist/` as compatibility fallbacks for projects created with another preset. If a Cloudflare Pages deployment is green but the URL returns 404, first verify that the build command is `npm run build` and the output directory is `out`.
 
 Environment variables:
 
