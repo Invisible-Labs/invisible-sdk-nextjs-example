@@ -8,10 +8,11 @@
   "scripts": {
     "dev": "next dev --webpack",
     "build": "next build --webpack",
-    "start": "next start",
+    "start": "node scripts/serve-static.mjs out 3000",
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
+    "check:static": "test -f out/index.html",
     "audit:high": "npm audit --audit-level=high"
   },
   "dependencies": {

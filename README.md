@@ -48,6 +48,8 @@ NEXT_PUBLIC_INVISIBLE_COORDINATOR_WS_URL=wss://your-dev-coordinator/ws-noise
 NEXT_PUBLIC_INVISIBLE_REQUIRED_MODE=dev
 ```
 
+`NEXT_PUBLIC_PRIVY_APP_ID` is required by `PrivyProvider`. It is public browser config, not a secret. Do not add a Privy app secret to this client-only example.
+
 Install dependencies:
 
 ```bash
@@ -63,6 +65,45 @@ npm run dev
 
 Open `http://localhost:3000`.
 
+Build and preview the static output:
+
+```bash
+npm run build
+npm start
+```
+
+`npm run build` writes the deployable site to `out/`.
+
+## Free Deployment
+
+Use Cloudflare Pages for a zero-cost public preview.
+
+Suggested settings:
+
+```txt
+Framework preset: None
+Build command: npm run build
+Build output directory: out
+Node version: 24
+```
+
+Environment variables:
+
+```txt
+NPM_TOKEN=github_packages_token_with_read_access
+NEXT_PUBLIC_PRIVY_APP_ID=your_privy_app_id
+NEXT_PUBLIC_SOLANA_CLUSTER=devnet
+NEXT_PUBLIC_SOLANA_RPC_URL=https://api.devnet.solana.com
+NEXT_PUBLIC_INVISIBLE_COORDINATOR_WS_URL=wss://your-dev-coordinator/ws-noise
+NEXT_PUBLIC_INVISIBLE_REQUIRED_MODE=dev
+```
+
+`NPM_TOKEN` is needed only while `@invisible-labs/sdk` is private. The `NEXT_PUBLIC_*` variables are embedded at build time because this app is statically exported.
+
+In the Privy Dashboard, enable Solana wallet login for the app ID. For a production Privy app ID, add the deployed Cloudflare Pages domain under Allowed Origins. Development app IDs can be used for preview domains while testing.
+
+GitHub Pages is also viable because this repository is public, but Cloudflare Pages gives better pull request previews with less project-specific path handling.
+
 ## Verification
 
 ```bash
@@ -70,6 +111,7 @@ npm run lint
 npm run typecheck
 npm run test
 npm run build
+npm run check:static
 npm run audit:high
 ```
 
@@ -89,4 +131,8 @@ npm run audit:high
 - [Tailwind CSS with Next.js](https://tailwindcss.com/docs/guides/nextjs)
 - [Privy React installation](https://docs.privy.io/basics/react/installation)
 - [Privy Solana Standard Wallets](https://docs.privy.io/recipes/solana/standard-wallets)
+- [Privy allowed domains](https://docs.privy.io/recipes/dashboard/allowed-domains)
+- [Next.js static export](https://nextjs.org/docs/app/guides/static-exports)
+- [Cloudflare Pages Next.js guide](https://developers.cloudflare.com/pages/framework-guides/nextjs/)
+- [Cloudflare Pages preview deployments](https://developers.cloudflare.com/pages/configuration/preview-deployments/)
 - [Solana Wallet Adapter guide](https://github.com/anza-xyz/wallet-adapter/blob/master/APP.md)
