@@ -87,7 +87,7 @@ Build output directory: out
 Node version: 24
 ```
 
-If the Pages project was created with the generic Next.js preset, the preview may 404 because Cloudflare can look for `.vercel/output/static`. The build mirrors `out/` there as a compatibility fallback, but the preferred fix is still to use the `Next.js (Static HTML Export)` preset or set the output directory to `out`.
+This repository also includes `wrangler.jsonc` with `pages_build_output_dir` set to `./out`, matching the Next.js static export. The build mirrors `out/` to `.vercel/output/static` and `dist/` as compatibility fallbacks for projects created with another preset. If a Cloudflare Pages deployment is green but the URL returns 404, first verify that the build command is `npm run build` and the output directory is `out`.
 
 Environment variables:
 
