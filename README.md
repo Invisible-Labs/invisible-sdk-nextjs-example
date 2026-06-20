@@ -15,6 +15,7 @@ Status: preview. Do not use with production funds.
 
 The UI intentionally hides DKG progress, coordinator state timelines, and internal recovery events.
 Invisible also uses this SDK in its own frontend. Visit [app.invisible.exchange](https://app.invisible.exchange) for the complete, more advanced product UI.
+The private-transfer action resolves when the SDK returns a fundable deposit address; it does not wait for on-chain deposit confirmation.
 
 Minimums shown by the example:
 

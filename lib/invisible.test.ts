@@ -1,5 +1,9 @@
 import { NotImplementedError } from "@invisible-labs/sdk";
-import type { CoordinatorSessionHandle, SwapResult } from "@invisible-labs/sdk/user";
+import type {
+  CoordinatorProtocolError,
+  CoordinatorSessionHandle,
+  SwapResult,
+} from "@invisible-labs/sdk/user";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -22,14 +26,22 @@ const coordinator = {
   ],
 };
 
-function fakeHandle(runSwap: CoordinatorSessionHandle["runSwap"]): CoordinatorSessionHandle {
+function fakeHandle(
+  runSwap: CoordinatorSessionHandle["runSwap"],
+  options: {
+    onCoordinatorError?: (listener: (error: CoordinatorProtocolError) => void) => void;
+  } = {},
+): CoordinatorSessionHandle {
   return {
     onStateChange: () => () => undefined,
     onLog: () => () => undefined,
     onPayoutExecuted: () => () => undefined,
     onRefundExecuted: () => () => undefined,
     onNormalUserActorSync: () => () => undefined,
-    onCoordinatorError: () => () => undefined,
+    onCoordinatorError: (listener) => {
+      options.onCoordinatorError?.(listener);
+      return () => undefined;
+    },
     currentSwapState: "new",
     currentSessionStatus: "idle",
     runSwap,
@@ -63,26 +75,17 @@ describe("startPrivateTransfer", () => {
     expect(MIN_LP_INITIAL_FUNDING_LAMPORTS).toBe(101_000_000);
   });
 
-  it("calls the installed SDK coordinator session with observable callbacks", async () => {
+  it("resolves when the installed SDK exposes the deposit address", async () => {
     const events: string[] = [];
-    const result: SwapResult = {
-      swapId: "swap_1",
-      jointPublicKey: new Uint8Array([1, 2, 3]),
-      depositTxSignature: "sig",
-      depositObservedAtMs: 1,
-      delegatedAtMs: 2,
-      policySnapshot: {} as SwapResult["policySnapshot"],
-      delegatePolicySnapshot: {} as SwapResult["delegatePolicySnapshot"],
-    };
     const createUserSession = vi.fn(() =>
       fakeHandle(async (params) => {
-        params.onDepositAddressReady?.({
+        await params.onDepositAddressReady?.({
           swapId: "swap_1",
-          jointPublicKey: new Uint8Array([1, 2, 3]),
+          jointPublicKey: new Uint8Array(32).fill(1),
           amountLamports: params.amountLamports,
         });
 
-        return result;
+        return new Promise<SwapResult>(() => undefined);
       }),
     );
 
@@ -94,10 +97,93 @@ describe("startPrivateTransfer", () => {
         createUserSession,
         onEvent: (event) => events.push(event.kind),
       }),
-    ).resolves.toMatchObject({ kind: "completed", swapId: "swap_1" });
+    ).resolves.toMatchObject({
+      kind: "deposit-ready",
+      swapId: "swap_1",
+      amountLamports: MIN_PRIVATE_TRANSFER_LAMPORTS,
+    });
 
     expect(createUserSession).toHaveBeenCalledWith({ coordinator, createSession: undefined });
     expect(events).toContain("deposit");
+  });
+
+  it("returns a completed result if the SDK completes before exposing a deposit address", async () => {
+    const result: SwapResult = {
+      swapId: "swap_1",
+      jointPublicKey: new Uint8Array(32).fill(1),
+      depositTxSignature: "sig",
+      depositObservedAtMs: 1,
+      delegatedAtMs: 2,
+      policySnapshot: {} as SwapResult["policySnapshot"],
+      delegatePolicySnapshot: {} as SwapResult["delegatePolicySnapshot"],
+    };
+    const createUserSession = vi.fn(() => fakeHandle(async () => result));
+
+    await expect(
+      startPrivateTransfer({
+        amountSol: "0.4",
+        destinationAddress: "dest",
+        coordinator,
+        createUserSession,
+      }),
+    ).resolves.toMatchObject({ kind: "completed", swapId: "swap_1" });
+  });
+
+  it("returns a failure if the SDK fails before exposing a deposit address", async () => {
+    const createUserSession = vi.fn(() =>
+      fakeHandle(async () => {
+        throw new Error("boom");
+      }),
+    );
+
+    await expect(
+      startPrivateTransfer({
+        amountSol: "0.4",
+        destinationAddress: "dest",
+        coordinator,
+        createUserSession,
+      }),
+    ).resolves.toMatchObject({ kind: "failed", message: "boom" });
+  });
+
+  it("fails fast when the coordinator rejects the SDK protocol before deposit", async () => {
+    let emitCoordinatorError: ((error: CoordinatorProtocolError) => void) | undefined;
+    const createUserSession = vi.fn(() =>
+      fakeHandle(
+        async () => {
+          setTimeout(() => {
+            emitCoordinatorError?.(
+              Object.assign(
+                new Error(
+                  'decode error: json schema validation failed: /type: "ContractRequest" is not one of "SwapRequest"',
+                ),
+                {
+                  code: "ERR_INTERNAL",
+                },
+              ),
+            );
+          }, 0);
+          return new Promise<SwapResult>(() => undefined);
+        },
+        {
+          onCoordinatorError: (listener) => {
+            emitCoordinatorError = listener;
+          },
+        },
+      ),
+    );
+
+    await expect(
+      startPrivateTransfer({
+        amountSol: "0.4",
+        destinationAddress: "dest",
+        coordinator,
+        createUserSession,
+      }),
+    ).resolves.toMatchObject({
+      kind: "failed",
+      message: expect.stringContaining("not compatible with this SDK build"),
+    });
   });
 
   it("rejects private transfer amounts below the protocol minimum", async () => {

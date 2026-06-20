@@ -153,7 +153,7 @@ export function TransferConsole({ env }: TransferConsoleProps) {
                   ) : (
                     <Send aria-hidden="true" size={17} />
                   )}
-                  Start transfer
+                  Create deposit address
                 </button>
               </div>
             </form>
@@ -250,6 +250,21 @@ function Notice({ children, tone }: { children: ReactNode; tone: "warn" | "ok" }
 }
 
 function OutcomePanel({ outcome }: { outcome: TransferOutcome }) {
+  if (outcome.kind === "deposit-ready") {
+    return (
+      <div className="border border-success/35 bg-success/10 p-4 text-sm text-success">
+        <div className="flex items-center gap-2 font-medium">
+          <CheckCircle2 aria-hidden="true" size={17} />
+          Deposit address ready
+        </div>
+        <p className="mt-3 text-success/80">
+          Send exactly {lamportsToSol(outcome.amountLamports)} SOL to:
+        </p>
+        <p className="mt-2 break-all font-mono text-foreground">{outcome.depositAddress}</p>
+      </div>
+    );
+  }
+
   if (outcome.kind === "completed") {
     return (
       <div className="border border-success/35 bg-success/10 p-4 text-sm text-success">
