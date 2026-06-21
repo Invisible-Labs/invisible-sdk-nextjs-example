@@ -1,6 +1,17 @@
 "use client";
 
-import { AlertTriangle, CheckCircle2, Loader2, Send, ShieldCheck, WalletCards } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Download,
+  Loader2,
+  Plus,
+  RefreshCw,
+  Send,
+  ShieldCheck,
+  Upload,
+  WalletCards,
+} from "lucide-react";
 import { type FormEvent, type ReactNode, useMemo, useState } from "react";
 
 import type { PublicEnv } from "@/lib/env";
@@ -9,10 +20,13 @@ import { lamportsToSol, solToLamports } from "@/lib/format";
 import {
   buildSingleDestinationPayoutPolicy,
   LP_DEFAULT_TARGET_SHARDS,
+  type LpAction,
+  type LpPositionSnapshot,
   MIN_LP_INITIAL_FUNDING_LAMPORTS,
   MIN_PRIVATE_TRANSFER_LAMPORTS,
+  runLpAction,
   startPrivateTransfer,
-  type TransferOutcome,
+  type ConsoleOutcome,
 } from "@/lib/invisible";
 
 type TransferConsoleProps = {
@@ -22,13 +36,32 @@ type TransferConsoleProps = {
 type Mode = "transfer" | "lp";
 
 const sampleDestination = "11111111111111111111111111111111";
+const LP_ACTIONS: ReadonlyArray<{
+  action: LpAction;
+  label: string;
+  icon: typeof Plus;
+  needsCode: boolean;
+  needsDestination?: boolean;
+}> = [
+  { action: "create", label: "Create", icon: Plus, needsCode: false },
+  { action: "recover", label: "Recover", icon: RefreshCw, needsCode: true },
+  { action: "complete-dkg", label: "DKG", icon: ShieldCheck, needsCode: true },
+  { action: "prepare-funding", label: "Funding", icon: WalletCards, needsCode: true },
+  { action: "reconcile-funding", label: "Reconcile", icon: RefreshCw, needsCode: true },
+  { action: "refill", label: "Refill", icon: Download, needsCode: true },
+  { action: "withdraw", label: "Withdraw", icon: Upload, needsCode: true, needsDestination: true },
+];
 
 export function TransferConsole({ env }: TransferConsoleProps) {
   const [mode, setMode] = useState<Mode>("transfer");
   const [amountSol, setAmountSol] = useState(lamportsToSol(MIN_PRIVATE_TRANSFER_LAMPORTS));
   const [destinationAddress, setDestinationAddress] = useState(sampleDestination);
-  const [outcome, setOutcome] = useState<TransferOutcome | null>(null);
+  const [lpPositionCode, setLpPositionCode] = useState("");
+  const [lpDestinationAddress, setLpDestinationAddress] = useState(sampleDestination);
+  const [lpPosition, setLpPosition] = useState<LpPositionSnapshot | null>(null);
+  const [outcome, setOutcome] = useState<ConsoleOutcome | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [lpSubmittingAction, setLpSubmittingAction] = useState<LpAction | null>(null);
 
   const configured = isReady(env);
   const coordinatorHost = useMemo(() => {
@@ -71,6 +104,34 @@ export function TransferConsole({ env }: TransferConsoleProps) {
     });
 
     setOutcome(result);
+    setSubmitting(false);
+  }
+
+  async function onLpAction(action: LpAction) {
+    if (!configured || submitting) {
+      return;
+    }
+
+    setSubmitting(true);
+    setLpSubmittingAction(action);
+    setOutcome(null);
+
+    const result = await runLpAction({
+      action,
+      coordinator: env.coordinator,
+      positionCode: lpPositionCode,
+      destinationAddress: lpDestinationAddress,
+    });
+
+    if (result.kind === "lp-position" || result.kind === "lp-funding" || result.kind === "lp-withdrawal") {
+      setLpPosition(result.position);
+    }
+    if (result.kind === "lp-position" && result.lpPositionCode) {
+      setLpPositionCode(result.lpPositionCode);
+    }
+
+    setOutcome(result);
+    setLpSubmittingAction(null);
     setSubmitting(false);
   }
 
@@ -173,7 +234,60 @@ export function TransferConsole({ env }: TransferConsoleProps) {
                 <Fact label="Default shards" value={String(LP_DEFAULT_TARGET_SHARDS)} />
               </div>
 
-              <Notice tone="ok">LP commands are preview-only in this SDK package.</Notice>
+              <div className="mt-8 grid gap-5">
+                <label className="grid gap-2">
+                  <span className="text-sm font-medium text-foreground">LP Position Code</span>
+                  <textarea
+                    className="input min-h-24 resize-y font-mono text-xs leading-5"
+                    value={lpPositionCode}
+                    onChange={(event) => setLpPositionCode(event.target.value)}
+                    placeholder="Create or paste an LP Position Code"
+                  />
+                </label>
+
+                <label className="grid gap-2">
+                  <span className="text-sm font-medium text-foreground">Withdrawal destination</span>
+                  <input
+                    className="input font-mono text-sm"
+                    value={lpDestinationAddress}
+                    onChange={(event) => setLpDestinationAddress(event.target.value)}
+                    placeholder={sampleDestination}
+                  />
+                </label>
+
+                {lpPosition ? <LpPositionFacts position={lpPosition} /> : null}
+
+                {!configured ? (
+                  <Notice tone="warn">Missing config: {env.missing.join(", ")}.</Notice>
+                ) : null}
+
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  {LP_ACTIONS.map(({ action, label, icon: Icon, needsCode, needsDestination }) => {
+                    const disabled =
+                      !configured ||
+                      submitting ||
+                      (needsCode && lpPositionCode.trim().length === 0) ||
+                      (needsDestination === true && lpDestinationAddress.trim().length === 0);
+
+                    return (
+                      <button
+                        className="button-secondary h-11 justify-center"
+                        disabled={disabled}
+                        key={action}
+                        type="button"
+                        onClick={() => void onLpAction(action)}
+                      >
+                        {lpSubmittingAction === action ? (
+                          <Loader2 className="animate-spin" aria-hidden="true" size={16} />
+                        ) : (
+                          <Icon aria-hidden="true" size={16} />
+                        )}
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </section>
           )}
 
@@ -249,7 +363,18 @@ function Notice({ children, tone }: { children: ReactNode; tone: "warn" | "ok" }
   );
 }
 
-function OutcomePanel({ outcome }: { outcome: TransferOutcome }) {
+function LpPositionFacts({ position }: { position: LpPositionSnapshot }) {
+  return (
+    <div className="grid grid-cols-2 gap-4 border-y border-border py-4 text-sm sm:grid-cols-4">
+      <Fact label="Status" value={position.status} />
+      <Fact label="Shards" value={`${position.shardCount}/${position.targetShardCount}`} />
+      <Fact label="Available" value={String(position.availableShardCount)} />
+      <Fact label="Queued" value={String(position.fundingQueuedShardCount)} />
+    </div>
+  );
+}
+
+function OutcomePanel({ outcome }: { outcome: ConsoleOutcome }) {
   if (outcome.kind === "deposit-ready") {
     return (
       <div className="border border-success/35 bg-success/10 p-4 text-sm text-success">
@@ -277,12 +402,62 @@ function OutcomePanel({ outcome }: { outcome: TransferOutcome }) {
     );
   }
 
-  if (outcome.kind === "preview-only") {
+  if (outcome.kind === "lp-position") {
     return (
-      <div className="border border-accent/35 bg-accent/10 p-4 text-sm text-accent">
+      <div className="border border-success/35 bg-success/10 p-4 text-sm text-success">
         <div className="flex items-center gap-2 font-medium">
-          <ShieldCheck aria-hidden="true" size={17} />
-          Preview-only
+          <CheckCircle2 aria-hidden="true" size={17} />
+          LP position updated
+        </div>
+        <p className="mt-2 leading-6">{outcome.message}</p>
+        <p className="mt-2 break-all font-mono text-foreground">{outcome.position.id}</p>
+        {outcome.lpPositionCode ? (
+          <p className="mt-3 break-all font-mono text-xs leading-5 text-foreground">
+            {outcome.lpPositionCode}
+          </p>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (outcome.kind === "lp-funding") {
+    return (
+      <div className="border border-success/35 bg-success/10 p-4 text-sm text-success">
+        <div className="flex items-center gap-2 font-medium">
+          <WalletCards aria-hidden="true" size={17} />
+          LP_DKG_0 funding ready
+        </div>
+        <p className="mt-3 text-success/80">
+          Send exactly {lamportsToSol(outcome.requiredLamports)} SOL to:
+        </p>
+        <p className="mt-2 break-all font-mono text-foreground">{outcome.address}</p>
+      </div>
+    );
+  }
+
+  if (outcome.kind === "lp-withdrawal") {
+    return (
+      <div className="border border-success/35 bg-success/10 p-4 text-sm text-success">
+        <div className="flex items-center gap-2 font-medium">
+          <Upload aria-hidden="true" size={17} />
+          LP withdrawal requested
+        </div>
+        <p className="mt-2 break-all">Withdrawal id: {outcome.withdrawalId}</p>
+        {outcome.txSignatures.length > 0 ? (
+          <p className="mt-2 break-all font-mono text-xs text-foreground">
+            {outcome.txSignatures.join(", ")}
+          </p>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (outcome.kind === "lp-failed") {
+    return (
+      <div className="border border-danger/35 bg-danger/10 p-4 text-sm text-danger">
+        <div className="flex items-center gap-2 font-medium">
+          <AlertTriangle aria-hidden="true" size={17} />
+          LP action failed
         </div>
         <p className="mt-2 leading-6">{outcome.message}</p>
       </div>

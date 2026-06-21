@@ -1,4 +1,3 @@
-import { NotImplementedError } from "@invisible-labs/sdk";
 import type {
   CoordinatorProtocolError,
   CoordinatorSessionHandle,
@@ -9,10 +8,12 @@ import { describe, expect, it, vi } from "vitest";
 import {
   buildInstantPayoutSpec,
   buildSingleDestinationPayoutPolicy,
+  type LpModuleForActions,
   MIN_LP_INITIAL_FUNDING_LAMPORTS,
   MIN_PRIVATE_TRANSFER_LAMPORTS,
+  runLpAction,
   startPrivateTransfer,
-  toPreviewOrFailure,
+  toFailure,
 } from "@/lib/invisible";
 
 const coordinator = {
@@ -206,9 +207,118 @@ describe("startPrivateTransfer", () => {
     expect(createUserSession).not.toHaveBeenCalled();
   });
 
-  it("maps SDK NotImplementedError to a preview-only outcome", async () => {
-    expect(toPreviewOrFailure(new NotImplementedError("user.contractRequest"))).toMatchObject({
-      kind: "preview-only",
+  it("normalizes unknown SDK errors to failures", async () => {
+    expect(toFailure(new Error("user.contractRequest failed"))).toEqual({
+      kind: "failed",
+      message: "user.contractRequest failed",
     });
   });
 });
+
+describe("runLpAction", () => {
+  it("creates an LP position through the SDK lifecycle module", async () => {
+    const lpModule = fakeLpModule();
+
+    await expect(
+      runLpAction({
+        action: "create",
+        coordinator,
+        createSdkSession: fakeSdkSession,
+        closeSdkSession: vi.fn(),
+        lpModule,
+      }),
+    ).resolves.toMatchObject({
+      kind: "lp-position",
+      action: "create",
+      lpPositionCode: "lp-code",
+      position: {
+        id: "lp_1",
+        targetShardCount: 200,
+        pregeneratedShardCount: 1,
+      },
+    });
+
+    expect(lpModule.createPosition).toHaveBeenCalledWith(expect.anything(), {
+      committedLamports: MIN_LP_INITIAL_FUNDING_LAMPORTS,
+      shardCount: 200,
+    });
+  });
+
+  it("recovers before asking the SDK for LP_DKG_0 funding", async () => {
+    const lpModule = fakeLpModule();
+
+    await expect(
+      runLpAction({
+        action: "prepare-funding",
+        coordinator,
+        positionCode: "lp-code",
+        createSdkSession: fakeSdkSession,
+        closeSdkSession: vi.fn(),
+        lpModule,
+      }),
+    ).resolves.toMatchObject({
+      kind: "lp-funding",
+      address: "funding-address",
+      requiredLamports: MIN_LP_INITIAL_FUNDING_LAMPORTS,
+    });
+
+    expect(lpModule.recoverPosition).toHaveBeenCalledWith(expect.anything(), { code: "lp-code" });
+    expect(lpModule.prepareInitialFunding).toHaveBeenCalledWith(expect.anything(), "lp_1");
+  });
+
+  it("requires a destination for LP withdrawals", async () => {
+    await expect(
+      runLpAction({
+        action: "withdraw",
+        coordinator,
+        positionCode: "lp-code",
+        createSdkSession: fakeSdkSession,
+        closeSdkSession: vi.fn(),
+        lpModule: fakeLpModule(),
+      }),
+    ).resolves.toMatchObject({
+      kind: "lp-failed",
+      message: "Enter a withdrawal destination address.",
+    });
+  });
+});
+
+async function fakeSdkSession() {
+  return { attested: true } as never;
+}
+
+function fakeLpModule(): LpModuleForActions {
+  const position = {
+    id: "lp_1",
+    status: "active",
+    targetShardCount: 200,
+    committedLamports: MIN_LP_INITIAL_FUNDING_LAMPORTS,
+    earnedLamports: 0,
+    shards: [{ status: "PREGENERATED" }],
+  };
+
+  return {
+    createPosition: vi.fn(async () => ({
+      positionId: "lp_1",
+      lpPositionCode: "lp-code",
+      position,
+    })),
+    recoverPosition: vi.fn(async () => position),
+    completeDkgBatch: vi.fn(async () => position),
+    prepareInitialFunding: vi.fn(async () => ({
+      address: "funding-address",
+      requiredLamports: MIN_LP_INITIAL_FUNDING_LAMPORTS,
+      qrPayload: "solana:funding-address",
+      position,
+    })),
+    reconcileFunding: vi.fn(async () => position),
+    refill: vi.fn(async () => position),
+    withdrawPosition: vi.fn(async () => ({
+      execution: {
+        withdrawalId: "withdrawal_1",
+        txSignatures: ["sig"],
+      },
+      position,
+    })),
+  };
+}

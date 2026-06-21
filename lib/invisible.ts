@@ -1,9 +1,11 @@
 import {
+  closeSession,
   type CoordinatorPoolConfig,
-  NotImplementedError,
+  createSession,
   normalizeError,
   type PayoutPolicy,
 } from "@invisible-labs/sdk";
+import { inMemoryStorage } from "@invisible-labs/sdk/storage";
 import {
   createCoordinatorSession,
   type CoordinatorSessionHandle,
@@ -19,6 +21,7 @@ import { jointPubkeyToSolanaAddress } from "@/lib/joint-wallet-address";
 export const MIN_PRIVATE_TRANSFER_LAMPORTS = 400_000_000;
 export const MIN_LP_INITIAL_FUNDING_LAMPORTS = 101_000_000;
 export const LP_DEFAULT_TARGET_SHARDS = 200;
+const LP_WITHDRAWAL_ALLOW_MANY_TO_ONE = true;
 const COORDINATOR_PROTOCOL_MISMATCH_MESSAGE =
   "The configured coordinator is not compatible with this SDK build. Use a coordinator release that matches the installed SDK.";
 
@@ -37,8 +40,57 @@ export type TransferOutcome =
       amountLamports: number;
     }
   | { kind: "completed"; swapId: string; result: SwapResult }
-  | { kind: "preview-only"; message: string }
   | { kind: "failed"; message: string };
+
+export type LpAction =
+  | "create"
+  | "recover"
+  | "complete-dkg"
+  | "prepare-funding"
+  | "reconcile-funding"
+  | "refill"
+  | "withdraw";
+
+export type LpPositionSnapshot = {
+  id: string;
+  status: string;
+  targetShardCount: number;
+  shardCount: number;
+  availableShardCount: number;
+  fundingQueuedShardCount: number;
+  pregeneratedShardCount: number;
+  committedLamports: number;
+  earnedLamports: number;
+};
+
+export type LpOutcome =
+  | {
+      kind: "lp-position";
+      action: LpAction;
+      message: string;
+      position: LpPositionSnapshot;
+      lpPositionCode?: string;
+    }
+  | {
+      kind: "lp-funding";
+      action: "prepare-funding";
+      message: string;
+      position: LpPositionSnapshot;
+      address: string;
+      requiredLamports: number;
+      qrPayload: string;
+    }
+  | {
+      kind: "lp-withdrawal";
+      action: "withdraw";
+      message: string;
+      position: LpPositionSnapshot;
+      withdrawalId: string;
+      txSignatures: string[];
+    }
+  | { kind: "lp-failed"; message: string };
+
+export type ConsoleOutcome = TransferOutcome | LpOutcome;
 
 export type StartPrivateTransferInput = {
   amountSol: string;
@@ -47,6 +99,66 @@ export type StartPrivateTransferInput = {
   createSession?: CoordinatorSessionOptions["createSession"];
   createUserSession?: (options: CoordinatorSessionOptions) => CoordinatorSessionHandle;
   onEvent?: (event: TransferEvent) => void;
+};
+
+type SdkSession = Awaited<ReturnType<typeof createSession>>;
+
+type LpShardLike = {
+  status: string;
+};
+
+type LpPositionLike = {
+  id: string;
+  status: string;
+  targetShardCount: number;
+  shards: readonly LpShardLike[];
+  committedLamports: number;
+  earnedLamports: number;
+};
+
+type LpCreateResultLike = {
+  positionId: string;
+  lpPositionCode: string;
+  position?: LpPositionLike;
+};
+
+type LpFundingPlanLike = {
+  address: string;
+  requiredLamports: number;
+  qrPayload: string;
+  position?: LpPositionLike;
+};
+
+type LpWithdrawResultLike = {
+  execution: {
+    withdrawalId: string;
+    txSignatures: string[];
+  };
+  position: LpPositionLike;
+};
+
+export type LpModuleForActions = {
+  createPosition(session: SdkSession, args?: { committedLamports?: number; shardCount?: number }): Promise<LpCreateResultLike>;
+  recoverPosition(session: SdkSession, args: { code: string }): Promise<LpPositionLike>;
+  completeDkgBatch(session: SdkSession, positionId: string): Promise<LpPositionLike>;
+  prepareInitialFunding(session: SdkSession, positionId: string): Promise<LpFundingPlanLike | null>;
+  reconcileFunding(session: SdkSession, positionId: string): Promise<LpPositionLike>;
+  refill(session: SdkSession, positionId: string): Promise<LpPositionLike>;
+  withdrawPosition(
+    session: SdkSession,
+    positionId: string,
+    args: { destinationAddresses: string[]; allowManyToOne: boolean },
+  ): Promise<LpWithdrawResultLike>;
+};
+
+export type RunLpActionInput = {
+  action: LpAction;
+  coordinator: CoordinatorPoolConfig;
+  positionCode?: string;
+  destinationAddress?: string;
+  createSdkSession?: typeof createSession;
+  closeSdkSession?: typeof closeSession;
+  lpModule?: LpModuleForActions;
 };
 
 export function buildSingleDestinationPayoutPolicy(destinationAddress: string): PayoutPolicy {
@@ -71,15 +183,7 @@ function toHex(bytes: Uint8Array): string {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-export function toPreviewOrFailure(error: unknown): TransferOutcome {
-  if (error instanceof NotImplementedError) {
-    return {
-      kind: "preview-only",
-      message:
-        "This SDK surface is installed and typed, but the current package reports that command execution is not implemented yet.",
-    };
-  }
-
+export function toFailure(error: unknown): TransferOutcome {
   return {
     kind: "failed",
     message: normalizeError(error, "The private transfer could not be started."),
@@ -192,7 +296,7 @@ export async function startPrivateTransfer(input: StartPrivateTransferInput): Pr
         if (depositReady && isBenignTransportDrop(error)) {
           return undefined;
         }
-        return toPreviewOrFailure(error);
+        return toFailure(error);
       })
       .finally(() => {
         user?.close();
@@ -208,6 +312,152 @@ export async function startPrivateTransfer(input: StartPrivateTransferInput): Pr
       message: "The coordinator session ended before the deposit address was ready.",
     };
   } catch (error) {
-    return toPreviewOrFailure(error);
+    return toFailure(error);
   }
+}
+
+export async function runLpAction(input: RunLpActionInput): Promise<LpOutcome> {
+  let session: SdkSession | undefined;
+
+  try {
+    const makeSession = input.createSdkSession ?? createSession;
+    session = await makeSession({
+      coordinator: input.coordinator,
+      storage: inMemoryStorage(),
+    });
+    const lp = input.lpModule ?? (await loadLpModule());
+
+    if (input.action === "create") {
+      const result = await lp.createPosition(session, {
+        committedLamports: MIN_LP_INITIAL_FUNDING_LAMPORTS,
+        shardCount: LP_DEFAULT_TARGET_SHARDS,
+      });
+      const position = result.position ?? (await lp.recoverPosition(session, { code: result.lpPositionCode }));
+      return {
+        kind: "lp-position",
+        action: input.action,
+        message: "LP position created. Save the LP Position Code before continuing.",
+        position: summarizeLpPosition(position),
+        lpPositionCode: result.lpPositionCode,
+      };
+    }
+
+    const recovered = await recoverLpPositionForAction(lp, session, input.positionCode);
+    if (input.action === "recover") {
+      return {
+        kind: "lp-position",
+        action: input.action,
+        message: "LP position recovered.",
+        position: summarizeLpPosition(recovered),
+      };
+    }
+
+    if (input.action === "complete-dkg") {
+      const position = await lp.completeDkgBatch(session, recovered.id);
+      return {
+        kind: "lp-position",
+        action: input.action,
+        message: "LP DKG batch completed or reconciled.",
+        position: summarizeLpPosition(position),
+      };
+    }
+
+    if (input.action === "prepare-funding") {
+      const plan = await lp.prepareInitialFunding(session, recovered.id);
+      if (plan === null) {
+        return {
+          kind: "lp-position",
+          action: input.action,
+          message: "No LP_DKG_0 funding action is currently available.",
+          position: summarizeLpPosition(recovered),
+        };
+      }
+      return {
+        kind: "lp-funding",
+        action: input.action,
+        message: "Fund only LP_DKG_0 with the exact required amount.",
+        position: summarizeLpPosition(plan.position ?? recovered),
+        address: plan.address,
+        requiredLamports: plan.requiredLamports,
+        qrPayload: plan.qrPayload,
+      };
+    }
+
+    if (input.action === "reconcile-funding") {
+      const position = await lp.reconcileFunding(session, recovered.id);
+      return {
+        kind: "lp-position",
+        action: input.action,
+        message: "LP funding reconciled from coordinator state.",
+        position: summarizeLpPosition(position),
+      };
+    }
+
+    if (input.action === "refill") {
+      const position = await lp.refill(session, recovered.id);
+      return {
+        kind: "lp-position",
+        action: input.action,
+        message: "LP refill requested through the SDK lifecycle.",
+        position: summarizeLpPosition(position),
+      };
+    }
+
+    const destination = input.destinationAddress?.trim();
+    if (!destination) throw new Error("Enter a withdrawal destination address.");
+    const result = await lp.withdrawPosition(session, recovered.id, {
+      destinationAddresses: [destination],
+      allowManyToOne: LP_WITHDRAWAL_ALLOW_MANY_TO_ONE,
+    });
+    return {
+      kind: "lp-withdrawal",
+      action: input.action,
+      message: "LP withdrawal requested. Reconciliation stays SDK-owned.",
+      position: summarizeLpPosition(result.position),
+      withdrawalId: result.execution.withdrawalId,
+      txSignatures: result.execution.txSignatures,
+    };
+  } catch (error) {
+    return {
+      kind: "lp-failed",
+      message: normalizeError(error, "LP action failed."),
+    };
+  } finally {
+    if (session !== undefined) {
+      const close = input.closeSdkSession ?? closeSession;
+      close(session);
+    }
+  }
+}
+
+async function loadLpModule(): Promise<LpModuleForActions> {
+  return (await import("@invisible-labs/sdk/lp")) as unknown as LpModuleForActions;
+}
+
+async function recoverLpPositionForAction(
+  lp: LpModuleForActions,
+  session: SdkSession,
+  positionCode: string | undefined,
+): Promise<LpPositionLike> {
+  const code = positionCode?.trim();
+  if (!code) throw new Error("Enter the LP Position Code.");
+  return lp.recoverPosition(session, { code });
+}
+
+function summarizeLpPosition(position: LpPositionLike): LpPositionSnapshot {
+  return {
+    id: position.id,
+    status: position.status,
+    targetShardCount: position.targetShardCount,
+    shardCount: position.shards.length,
+    availableShardCount: countLpShards(position, "AVAILABLE"),
+    fundingQueuedShardCount: countLpShards(position, "FUNDING_QUEUED"),
+    pregeneratedShardCount: countLpShards(position, "PREGENERATED"),
+    committedLamports: position.committedLamports,
+    earnedLamports: position.earnedLamports,
+  };
+}
+
+function countLpShards(position: LpPositionLike, status: string): number {
+  return position.shards.filter((shard) => shard.status === status).length;
 }

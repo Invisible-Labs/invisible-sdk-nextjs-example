@@ -16,7 +16,7 @@
     "audit:high": "npm audit --audit-level=high"
   },
   "dependencies": {
-    "@invisible-labs/sdk": "0.0.1",
+    "@invisible-labs/sdk": "0.1.0-dev.1.2",
     "@solana-program/memo": "0.11.2",
     "@solana-program/system": "0.12.2",
     "@solana-program/token": "0.14.0",

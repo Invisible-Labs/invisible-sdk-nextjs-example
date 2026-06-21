@@ -11,7 +11,7 @@ Status: preview. Do not use with production funds.
 - A minimal LP onboarding view.
 - Public Invisible coordinator configuration for the Azure TEE endpoint.
 - Normal-user private transfer through the installed SDK package.
-- Honest handling for SDK surfaces that still report preview or not-implemented behavior.
+- LP create, recover, DKG, initial funding, reconcile, refill, and withdrawal through the installed SDK package.
 
 The UI intentionally hides DKG progress, coordinator state timelines, and internal recovery events.
 Invisible also uses this SDK in its own frontend. Visit [app.invisible.exchange](https://app.invisible.exchange) for the complete, more advanced product UI.
@@ -31,7 +31,7 @@ LP default shards: 200
 This repo uses the private GitHub Packages build:
 
 ```txt
-@invisible-labs/sdk@0.0.1
+@invisible-labs/sdk@0.1.0-dev.1.2
 ```
 
 Some Invisible docs refer to the target public package name `@invisible/sdk`. This example uses the package that is actually published today.
