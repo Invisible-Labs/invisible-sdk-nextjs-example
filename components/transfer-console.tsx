@@ -443,11 +443,6 @@ function OutcomePanel({ outcome }: { outcome: ConsoleOutcome }) {
           LP withdrawal requested
         </div>
         <p className="mt-2 break-all">Withdrawal id: {outcome.withdrawalId}</p>
-        {outcome.txSignatures.length > 0 ? (
-          <p className="mt-2 break-all font-mono text-xs text-foreground">
-            {outcome.txSignatures.join(", ")}
-          </p>
-        ) : null}
       </div>
     );
   }
